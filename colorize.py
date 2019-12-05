@@ -11,14 +11,21 @@ import sys
 np.set_printoptions(threshold=sys.maxsize, precision=1, linewidth=400)
 
 DISPLAY = False
-IN_DIR = "./in/"
-OUT_DIR = "./out/"
-GRAYSCALE_IMG = "matcha.bmp"
-MARKED_IMG = "matcha_marked.bmp"
-OUT_IMG = OUT_DIR + f"colorized_{GRAYSCALE_IMG}"
 WINDOW_SZ = 3 # must be odd to be centered around pixel
 VARIANCE_MULTIPLIER = 0.6
 MIN_SIGMA = 0.000002
+
+IN_DIR = "./in/"
+OUT_DIR = "./out/"
+GRAYSCALE_IMG = "matcha"
+MARKED_IMG = f"{GRAYSCALE_IMG}_marked"
+OUT_IMG = f"{GRAYSCALE_IMG}_colorized"
+
+def infile(fn):
+    return IN_DIR + fn + ".bmp"
+
+def outfile(fn):
+    return OUT_DIR + fn + ".png"
 
 def preprocess(original, marked):
     """
@@ -27,9 +34,18 @@ def preprocess(original, marked):
     and trims based on (???).
     """
     # read in images from files
-    grayscale = cv2.imread(original) / 255.
+    grayscale = cv2.imread(original)
+    if grayscale is None:
+        raise Exception(f"Could not read from image file '{original}'")
+
     marked = cv2.imread(marked)
+    if marked is None:
+        raise Exception(f"Could not read from image file '{marked}'")
+
     marked = cv2.cvtColor(marked, cv2.COLOR_BGR2RGB)
+
+    # scale to float
+    grayscale = grayscale / 255.
     marked = marked / 255.
 
     # isolate colored markings
@@ -153,24 +169,27 @@ def colorize(marks, im):
     return result
 
 if __name__ == "__main__":
-    marks, im = preprocess(IN_DIR + GRAYSCALE_IMG, IN_DIR + MARKED_IMG)
+    if len(sys.argv) > 1:
+        fn = sys.argv[1]
+        grayscale = infile(fn)
+        marked = infile(fn + "_marked")
+        out = outfile(fn + "_colorized")
+    else:
+        grayscale = infile(GRAYSCALE_IMG)
+        marked = infile(MARKED_IMG)
+        out = outfile(OUT_IMG)
+
+    print(f"Processing {grayscale} + {marked} -> {out}")
+
+    marks, im = preprocess(grayscale, marked)
     result = colorize(marks, im)
 
     # convert to scaled RGB
     result = yiq2rgb(result)
-
-    min_result = np.min(result)
-
-    if min_result < 0:
-        # TODO: something is going wrong here!!!
-        result += abs(np.min(result))
-
-    result = (255 / np.max(result)) * result
-    result = result.astype("uint16")
+    result = np.clip(result, 0, 1)
 
     # write to outfile
-    bmp = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(OUT_IMG, bmp)
+    plt.imsave(out, result)
 
     # optionally display colorized result
     if DISPLAY:
