@@ -31,8 +31,6 @@ def preprocess(original, marked):
     marked = cv2.imread(marked)
     marked = cv2.cvtColor(marked, cv2.COLOR_BGR2RGB)
     marked = marked / 255.
-    plt.imshow(grayscale)
-    plt.show()
 
     # isolate colored markings
     marks = np.sum(np.abs(grayscale - marked), axis=2) > 0.01
