@@ -2,16 +2,20 @@ import cv2
 import matplotlib.pyplot as plt
 from math import floor, log
 import numpy as np
+from scipy.linalg import solve
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
 from skimage.color import rgb2yiq, yiq2rgb
 
 import sys
-np.set_printoptions(threshold=sys.maxsize)
+np.set_printoptions(threshold=sys.maxsize, precision=1, linewidth=400)
 
-GRAYSCALE_IMG = "tinyexample.bmp"
-MARKED_IMG = "tinyexample_marked.bmp"
-OUT_IMG = f"marked_{GRAYSCALE_IMG}"
+DISPLAY = False
+IN_DIR = "./in/"
+OUT_DIR = "./out/"
+GRAYSCALE_IMG = "matcha.bmp"
+MARKED_IMG = "matcha_marked.bmp"
+OUT_IMG = OUT_DIR + f"colorized_{GRAYSCALE_IMG}"
 WINDOW_SZ = 3 # must be odd to be centered around pixel
 VARIANCE_MULTIPLIER = 0.6
 MIN_SIGMA = 0.000002
@@ -27,6 +31,8 @@ def preprocess(original, marked):
     marked = cv2.imread(marked)
     marked = cv2.cvtColor(marked, cv2.COLOR_BGR2RGB)
     marked = marked / 255.
+    plt.imshow(grayscale)
+    plt.show()
 
     # isolate colored markings
     marks = np.sum(np.abs(grayscale - marked), axis=2) > 0.01
@@ -42,21 +48,6 @@ def preprocess(original, marked):
     im[:,:,0] = gray_ntsc[:,:,0]
     im[:,:,1] = marked_ntsc[:,:,1]
     im[:,:,2] = marked_ntsc[:,:,2]
-
-    # ###########################################
-    # # not sure we need this section tbh
-    # # wtf is it doing
-    # # some sort of trimming of the images
-
-    # max_d = floor(log(min(h, w)) / log(2) - 2)
-    # iu = floor(h/(2^(max_d-1)))*(2^(max_d-1))
-    # ju = floor(w/(2^(max_d-1)))*(2^(max_d-1))
-
-    # # is it ok that the marks array doesn't have a 3rd axis?
-    # # (Looks like it is)
-    # marks = marks[0:iu, 0:ju]
-    # im = im[0:iu, 0:ju, :]
-    # ###########################################
 
     return (marks, im)
 
@@ -97,17 +88,17 @@ def colorize(marks, im):
     im_sz = h * w
     window_len = WINDOW_SZ ** 2 # WINDOW_SZ x WINDOW_SZ
     full_len = im_sz * window_len # 1 window per pixel
-    img_indices = np.arange(im_sz).reshape((h, w))
+    img_indices = np.arange(im_sz).reshape((h, w), order= "F")
 
     absolute_idx = 0 # len
     pixel_idx = 0 # consts_len
     row_indices = np.zeros((full_len, 1))
     col_indices = np.zeros((full_len, 1))
     vals = np.zeros((full_len, 1))
-    gvals = np.zeros((1, window_len))
 
-    for r in range(h):
-        for c in range(w):
+    for c in range(w):
+        for r in range(h):
+            gvals = np.zeros((1, window_len))
             # if this pixel has not been colored by a scribble
             if not marks[r, c]:
                 neighbor_idx = 0
@@ -122,8 +113,11 @@ def colorize(marks, im):
 
                 current_pixel_val = im[r, c, 0]
                 gvals[0, neighbor_idx] = current_pixel_val
+
+                inclusive_gvals = gvals[:, 0 : neighbor_idx + 1]
                 noninclusive_gvals = gvals[:, 0 : neighbor_idx]
-                variance = np.mean((gvals[:, 0 : neighbor_idx + 1] - np.mean(gvals[:, 0 : neighbor_idx + 1])) ** 2)
+
+                variance = np.mean((inclusive_gvals - np.mean(inclusive_gvals)) ** 2)
                 sigma = variance * VARIANCE_MULTIPLIER
                 min_gvariance = np.min((noninclusive_gvals - current_pixel_val) ** 2)
 
@@ -140,10 +134,11 @@ def colorize(marks, im):
             col_indices[absolute_idx] = img_indices[r, c]
             vals[absolute_idx] = 1
             pixel_idx += 1
+            absolute_idx += 1
 
-    vals = (vals[0: absolute_idx + 1].T)[0]
-    col_indices = (col_indices[0 : absolute_idx + 1].T)[0]
-    row_indices = (row_indices[0 : absolute_idx + 1].T)[0]
+    vals = (vals[0: absolute_idx].T)[0]
+    col_indices = (col_indices[0 : absolute_idx].T)[0]
+    row_indices = (row_indices[0 : absolute_idx].T)[0]
 
     marked_indices = np.nonzero(marks)
     A = csr_matrix((vals, (row_indices, col_indices)), shape=(pixel_idx, im_sz))
@@ -153,16 +148,34 @@ def colorize(marks, im):
         current_slice = im[:, :, i]
         b = np.zeros((h, w))
         b[marked_indices] = current_slice[marked_indices]
-        b = b.reshape((A.shape[0]))
+        b = b.reshape((A.shape[0]), order="F")
         solution = lsqr(A, b)[0]
-        result[:, :, i] = solution.reshape((h, w))
+        result[:, :, i] = solution.reshape((h, w), order="F")
 
     return result
 
 if __name__ == "__main__":
-    marks, im = preprocess(GRAYSCALE_IMG, MARKED_IMG)
+    marks, im = preprocess(IN_DIR + GRAYSCALE_IMG, IN_DIR + MARKED_IMG)
     result = colorize(marks, im)
+
+    # convert to scaled RGB
     result = yiq2rgb(result)
-    plt.imshow(result)
-    plt.show()
+
+    min_result = np.min(result)
+
+    if min_result < 0:
+        # TODO: something is going wrong here!!!
+        result += abs(np.min(result))
+
+    result = (255 / np.max(result)) * result
+    result = result.astype("uint16")
+
+    # write to outfile
+    bmp = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+    cv2.imwrite(OUT_IMG, bmp)
+
+    # optionally display colorized result
+    if DISPLAY:
+        plt.imshow(result)
+        plt.show()
 
