@@ -7,6 +7,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
 from skimage.color import rgb2yiq, yiq2rgb
 import time
+import os
 
 import sys
 np.set_printoptions(threshold=sys.maxsize, precision=1, linewidth=400)
@@ -198,26 +199,29 @@ if __name__ == "__main__":
 
         in_bw = infile(image_name)
         in_marked = infile(f"{image_name}_{qualifier}_marked")
-        out = outfile(f"{image_name}_{qualifier}_colorized")
+        out = outfile(f"{image_name}/{image_name}_{qualifier}_colorized")
+
+        if not os.path.exists(OUT_DIR + image_name):
+            os.mkdir(OUT_DIR + image_name)
 
         get_colorized(in_bw, in_marked, out)
 
         if run_all == "true":
             for winsz in [5, 7, 9]:
                 WINDOW_SZ = winsz
-                new_out = outfile(f"{image_name}_{qualifier}_colorized_winsz{winsz}")
+                new_out = outfile(f"{image_name}/{image_name}_{qualifier}_colorized_winsz{winsz}")
                 get_colorized(in_bw, in_marked, new_out)
             WINDOW_SZ = 3
 
             for mult in [0.1, 0.3, 0.9]:
                 VARIANCE_MULTIPLIER = mult
-                new_out = outfile(f"{image_name}_{qualifier}_colorized_mult{mult}")
+                new_out = outfile(f"{image_name}/{image_name}_{qualifier}_colorized_mult{mult}")
                 get_colorized(in_bw, in_marked, new_out)
             VARIANCE_MULTIPLIER = 0.6
 
             for precision in [0.001, 0.1, 1.0]:
                 PRECISION = precision
-                new_out = outfile(f"{image_name}_{qualifier}_colorized_precision{precision}")
+                new_out = outfile(f"{image_name}/{image_name}_{qualifier}_colorized_precision{precision}")
                 get_colorized(in_bw, in_marked, new_out)
             PRECISION = 0.01
     else:
