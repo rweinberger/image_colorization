@@ -16,14 +16,9 @@ WINDOW_SZ = 3 # must be odd to be centered around pixel
 VARIANCE_MULTIPLIER = 0.6
 MIN_SIGMA = 0.000002
 PRECISION = 0.01
-in_extension = ""
-out_extension = ""
 
 IN_DIR = "./in/"
 OUT_DIR = "./out/"
-GRAYSCALE_IMG = "matcha"
-MARKED_IMG = f"{GRAYSCALE_IMG}_marked"
-OUT_IMG = f"{GRAYSCALE_IMG}_colorized"
 
 def infile(fn):
     return IN_DIR + fn + ".bmp"
@@ -172,23 +167,11 @@ def colorize(marks, im):
 
     return result
 
-def get_colorized(args):
-
+def get_colorized(in_bw, in_marked, out_name):
     start = time.time()
+    print(f"Processing {in_bw} + {in_marked} -> {out_name}")
 
-    if len(args) > 1:
-        fn = args[1]
-        grayscale = infile(fn)
-        marked = infile(fn + in_extension + "_marked")
-        out = outfile(fn + in_extension + "_colorized" + out_extension)
-    else:
-        grayscale = infile(GRAYSCALE_IMG)
-        marked = infile(MARKED_IMG)
-        out = outfile(OUT_IMG)
-
-    print(f"Processing {grayscale} + {marked} -> {out}")
-
-    marks, im = preprocess(grayscale, marked)
+    marks, im = preprocess(in_bw, in_marked)
     result = colorize(marks, im)
 
     # convert to scaled RGB
@@ -196,7 +179,7 @@ def get_colorized(args):
     result = np.clip(result, 0, 1)
 
     # write to outfile
-    plt.imsave(out, result)
+    plt.imsave(out_name, result)
 
     # optionally display colorized result
     if DISPLAY:
@@ -206,27 +189,40 @@ def get_colorized(args):
     print("runtime in sec: ", (time.time() - start) )
 
 if __name__ == "__main__":
+    qualifiers = {"reg", "thin", "thick", "dots"}
+    argc = len(sys.argv)
+    if argc > 1:
+        assert argc == 4, "Must provide image name, qualifier, and run_all boolean"
+        image_name, qualifier, run_all = sys.argv[1:]
+        assert qualifier in qualifiers, f"Unrecognized qualifier '{qualifier}''"
 
-    get_colorized(sys.argv)
-    if (len(sys.argv) > 1 and sys.argv[1] == "true"):
+        in_bw = infile(image_name)
+        in_marked = infile(f"{image_name}_{qualifier}_marked")
+        out = outfile(f"{image_name}_{qualifier}_colorized")
 
-        for winsz in [5, 7, 9]:
-            WINDOW_SZ = winsz
-            extension = "_winsz"+winsz
-            get_colorized(sys.argv)
-        WINDOW_SZ = 3
+        get_colorized(in_bw, in_marked, out)
 
-        for mult in [0.1, 0.3, 0.9]:
-            VARIANCE_MULTIPLIER = mult
-            extension = "_mult"+mult
-            get_colorized(sys.argv)
-        VARIANCE_MULTIPLIER = 0.6
+        if run_all == "true":
+            for winsz in [5, 7, 9]:
+                WINDOW_SZ = winsz
+                new_out = outfile(f"{image_name}_{qualifier}_colorized_winsz{winsz}")
+                get_colorized(in_bw, in_marked, new_out)
+            WINDOW_SZ = 3
 
-        for precision in [0.001, 0.1, 1.0]:
-            PRECISION = precision
-            extension = "_precision"+precision
-            get_colorized(sys.argv)
-        PRECISION = 0.01
+            for mult in [0.1, 0.3, 0.9]:
+                VARIANCE_MULTIPLIER = mult
+                new_out = outfile(f"{image_name}_{qualifier}_colorized_mult{mult}")
+                get_colorized(in_bw, in_marked, new_out)
+            VARIANCE_MULTIPLIER = 0.6
+
+            for precision in [0.001, 0.1, 1.0]:
+                PRECISION = precision
+                new_out = outfile(f"{image_name}_{qualifier}_colorized_precision{precision}")
+                get_colorized(in_bw, in_marked, new_out)
+            PRECISION = 0.01
+    else:
+        print("Plz supply args")
+        exit()
 
     
 
