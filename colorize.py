@@ -6,6 +6,7 @@ from scipy.linalg import solve
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import lsqr
 from skimage.color import rgb2yiq, yiq2rgb
+import time
 
 import sys
 np.set_printoptions(threshold=sys.maxsize, precision=1, linewidth=400)
@@ -14,6 +15,9 @@ DISPLAY = False
 WINDOW_SZ = 3 # must be odd to be centered around pixel
 VARIANCE_MULTIPLIER = 0.6
 MIN_SIGMA = 0.000002
+PRECISION = 0.01
+in_extension = ""
+out_extension = ""
 
 IN_DIR = "./in/"
 OUT_DIR = "./out/"
@@ -49,7 +53,7 @@ def preprocess(original, marked):
     marked = marked / 255.
 
     # isolate colored markings
-    marks = np.sum(np.abs(grayscale - marked), axis=2) > 0.01
+    marks = np.sum(np.abs(grayscale - marked), axis=2) > PRECISION
     marks = marks.astype('double')
 
     # convert to YIQ
@@ -168,12 +172,15 @@ def colorize(marks, im):
 
     return result
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        fn = sys.argv[1]
+def get_colorized(args):
+
+    start = time.time()
+
+    if len(args) > 1:
+        fn = args[1]
         grayscale = infile(fn)
-        marked = infile(fn + "_marked")
-        out = outfile(fn + "_colorized")
+        marked = infile(fn + in_extension + "_marked")
+        out = outfile(fn + in_extension + "_colorized" + out_extension)
     else:
         grayscale = infile(GRAYSCALE_IMG)
         marked = infile(MARKED_IMG)
@@ -195,4 +202,31 @@ if __name__ == "__main__":
     if DISPLAY:
         plt.imshow(result)
         plt.show()
+
+    print("runtime in sec: ", (time.time() - start) )
+
+if __name__ == "__main__":
+
+    get_colorized(sys.argv)
+    if (len(sys.argv) > 1 and sys.argv[1] == "true"):
+
+        for winsz in [5, 7, 9]:
+            WINDOW_SZ = winsz
+            extension = "_winsz"+winsz
+            get_colorized(sys.argv)
+        WINDOW_SZ = 3
+
+        for mult in [0.1, 0.3, 0.9]:
+            VARIANCE_MULTIPLIER = mult
+            extension = "_mult"+mult
+            get_colorized(sys.argv)
+        VARIANCE_MULTIPLIER = 0.6
+
+        for precision in [0.001, 0.1, 1.0]:
+            PRECISION = precision
+            extension = "_precision"+precision
+            get_colorized(sys.argv)
+        PRECISION = 0.01
+
+    
 
